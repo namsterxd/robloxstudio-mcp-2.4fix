@@ -1047,7 +1047,11 @@ export class RobloxStudioTools {
       }
 
       const buildId = modelMap[modelKey];
-      if (!buildId) continue;
+      if (!buildId) {
+        throw new Error(
+          `Invalid sceneData.place[${placementIndex}][0]: model key "${modelKey}" is not defined in sceneData.models`
+        );
+      }
 
       // Load build data from library
       const filePath = path.join(libraryPath, `${buildId}.json`);
