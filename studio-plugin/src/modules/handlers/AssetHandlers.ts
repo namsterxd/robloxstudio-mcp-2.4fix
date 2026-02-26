@@ -203,27 +203,36 @@ function previewAsset(requestData: Record<string, unknown>) {
 		return node;
 	}
 
-	const hierarchyRoots: Record<string, unknown>[] = [];
-	for (const child of (wrapperModel as Instance).GetChildren()) {
-		hierarchyRoots.push(buildHierarchy(child, 0));
+	const [previewSuccess, previewResult] = pcall(() => {
+		const hierarchyRoots: Record<string, unknown>[] = [];
+		for (const child of (wrapperModel as Instance).GetChildren()) {
+			hierarchyRoots.push(buildHierarchy(child, 0));
+		}
+
+		return {
+			success: true,
+			assetId,
+			hierarchy: hierarchyRoots,
+			summary: {
+				totalInstances,
+				classCounts,
+				hasScripts,
+				hasAnimations,
+				hasSounds,
+				hasParticles,
+			},
+		};
+	});
+
+	pcall(() => {
+		(wrapperModel as Instance).Destroy();
+	});
+
+	if (!previewSuccess) {
+		return { error: `Failed to preview asset ${assetId}: ${tostring(previewResult)}` };
 	}
 
-	// CRITICAL: Destroy wrapper to prevent memory leak
-	(wrapperModel as Instance).Destroy();
-
-	return {
-		success: true,
-		assetId,
-		hierarchy: hierarchyRoots,
-		summary: {
-			totalInstances,
-			classCounts,
-			hasScripts,
-			hasAnimations,
-			hasSounds,
-			hasParticles,
-		},
-	};
+	return previewResult;
 }
 
 export = {

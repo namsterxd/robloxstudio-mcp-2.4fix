@@ -723,26 +723,35 @@ local function previewAsset(requestData)
 		end
 		return node
 	end
-	local hierarchyRoots = {}
-	for _, child in wrapperModel:GetChildren() do
-		local _arg0 = buildHierarchy(child, 0)
-		table.insert(hierarchyRoots, _arg0)
+	local previewSuccess, previewResult = pcall(function()
+		local hierarchyRoots = {}
+		for _, child in wrapperModel:GetChildren() do
+			local _arg0 = buildHierarchy(child, 0)
+			table.insert(hierarchyRoots, _arg0)
+		end
+		return {
+			success = true,
+			assetId = assetId,
+			hierarchy = hierarchyRoots,
+			summary = {
+				totalInstances = totalInstances,
+				classCounts = classCounts,
+				hasScripts = hasScripts,
+				hasAnimations = hasAnimations,
+				hasSounds = hasSounds,
+				hasParticles = hasParticles,
+			},
+		}
+	end)
+	pcall(function()
+		wrapperModel:Destroy()
+	end)
+	if not previewSuccess then
+		return {
+			error = `Failed to preview asset {assetId}: {tostring(previewResult)}`,
+		}
 	end
-	-- CRITICAL: Destroy wrapper to prevent memory leak
-	wrapperModel:Destroy()
-	return {
-		success = true,
-		assetId = assetId,
-		hierarchy = hierarchyRoots,
-		summary = {
-			totalInstances = totalInstances,
-			classCounts = classCounts,
-			hasScripts = hasScripts,
-			hasAnimations = hasAnimations,
-			hasSounds = hasSounds,
-			hasParticles = hasParticles,
-		},
-	}
+	return previewResult
 end
 return {
 	insertAsset = insertAsset,
@@ -1428,62 +1437,81 @@ local function massCreateObjects(requestData)
 	local successCount = 0
 	local failureCount = 0
 	local recordingId = beginRecording("Mass create objects")
-	for _, objData in objects do
-		local className = objData.className
-		local parentPath = objData.parent
-		local name = objData.name
-		local _condition = className
-		if _condition ~= "" and _condition then
-			_condition = parentPath
-		end
-		if _condition ~= "" and _condition then
-			local parentInstance = getInstanceByPath(parentPath)
-			if parentInstance then
-				local success, newInstance = pcall(function()
-					local instance = Instance.new(className)
-					if name ~= "" and name then
-						instance.Name = name
+	local loopSuccess, loopError = pcall(function()
+		for _, entry in objects do
+			if not (type(entry) == "table") then
+				failureCount += 1
+				table.insert(results, {
+					success = false,
+					error = "Each object entry must be a table",
+				})
+				continue
+			end
+			local objData = entry
+			local className = objData.className
+			local parentPath = objData.parent
+			local name = objData.name
+			local _condition = className
+			if _condition ~= "" and _condition then
+				_condition = parentPath
+			end
+			if _condition ~= "" and _condition then
+				local parentInstance = getInstanceByPath(parentPath)
+				if parentInstance then
+					local success, newInstance = pcall(function()
+						local instance = Instance.new(className)
+						if name ~= "" and name then
+							instance.Name = name
+						end
+						instance.Parent = parentInstance
+						return instance
+					end)
+					if success and newInstance then
+						successCount += 1
+						local _arg0 = {
+							success = true,
+							className = className,
+							parent = parentPath,
+							instancePath = getInstancePath(newInstance),
+							name = newInstance.Name,
+						}
+						table.insert(results, _arg0)
+					else
+						failureCount += 1
+						local _arg0 = {
+							success = false,
+							className = className,
+							parent = parentPath,
+							error = tostring(newInstance),
+						}
+						table.insert(results, _arg0)
 					end
-					instance.Parent = parentInstance
-					return instance
-				end)
-				if success and newInstance then
-					successCount += 1
-					local _arg0 = {
-						success = true,
-						className = className,
-						parent = parentPath,
-						instancePath = getInstancePath(newInstance),
-						name = newInstance.Name,
-					}
-					table.insert(results, _arg0)
 				else
 					failureCount += 1
 					local _arg0 = {
 						success = false,
 						className = className,
 						parent = parentPath,
-						error = tostring(newInstance),
+						error = "Parent instance not found",
 					}
 					table.insert(results, _arg0)
 				end
 			else
 				failureCount += 1
-				local _arg0 = {
+				table.insert(results, {
 					success = false,
-					className = className,
-					parent = parentPath,
-					error = "Parent instance not found",
-				}
-				table.insert(results, _arg0)
+					error = "Class name and parent are required",
+				})
 			end
-		else
-			failureCount += 1
-			table.insert(results, {
-				success = false,
-				error = "Class name and parent are required",
-			})
 		end
+	end)
+	if not loopSuccess then
+		failureCount += 1
+		local _arg0 = {
+			success = false,
+			error = `Unexpected mass create failure: {tostring(loopError)}`,
+		}
+		table.insert(results, _arg0)
 	end
 	finishRecording(recordingId, successCount > 0)
 	return {
@@ -1506,71 +1534,92 @@ local function massCreateObjectsWithProperties(requestData)
 	local successCount = 0
 	local failureCount = 0
 	local recordingId = beginRecording("Mass create objects with properties")
-	for _, objData in objects do
-		local className = objData.className
-		local parentPath = objData.parent
-		local name = objData.name
-		local properties = (objData.properties) or {}
-		local _condition = className
-		if _condition ~= "" and _condition then
-			_condition = parentPath
-		end
-		if _condition ~= "" and _condition then
-			local parentInstance = getInstanceByPath(parentPath)
-			if parentInstance then
-				local success, newInstance = pcall(function()
-					local instance = Instance.new(className)
-					if name ~= "" and name then
-						instance.Name = name
+	local loopSuccess, loopError = pcall(function()
+		for _, entry in objects do
+			if not (type(entry) == "table") then
+				failureCount += 1
+				table.insert(results, {
+					success = false,
+					error = "Each object entry must be a table",
+				})
+				continue
+			end
+			local objData = entry
+			local className = objData.className
+			local parentPath = objData.parent
+			local name = objData.name
+			local propertiesRaw = objData.properties
+			local properties = if type(propertiesRaw) == "table" then propertiesRaw else ({})
+			local _condition = className
+			if _condition ~= "" and _condition then
+				_condition = parentPath
+			end
+			if _condition ~= "" and _condition then
+				local parentInstance = getInstanceByPath(parentPath)
+				if parentInstance then
+					local success, newInstance = pcall(function()
+						local instance = Instance.new(className)
+						if name ~= "" and name then
+							instance.Name = name
+						end
+						instance.Parent = parentInstance
+						for propName, propValue in pairs(properties) do
+							pcall(function()
+								local propNameStr = tostring(propName)
+								local converted = convertPropertyValue(instance, propNameStr, propValue)
+								if converted ~= nil then
+									instance[propNameStr] = converted
+								end
+							end)
+						end
+						return instance
+					end)
+					if success and newInstance then
+						successCount += 1
+						local _arg0 = {
+							success = true,
+							className = className,
+							parent = parentPath,
+							instancePath = getInstancePath(newInstance),
+							name = newInstance.Name,
+						}
+						table.insert(results, _arg0)
+					else
+						failureCount += 1
+						local _arg0 = {
+							success = false,
+							className = className,
+							parent = parentPath,
+							error = tostring(newInstance),
+						}
+						table.insert(results, _arg0)
 					end
-					instance.Parent = parentInstance
-					for propName, propValue in pairs(properties) do
-						pcall(function()
-							local converted = convertPropertyValue(instance, propName, propValue)
-							if converted ~= nil then
-								instance[propName] = converted
-							end
-						end)
-					end
-					return instance
-				end)
-				if success and newInstance then
-					successCount += 1
-					local _arg0 = {
-						success = true,
-						className = className,
-						parent = parentPath,
-						instancePath = getInstancePath(newInstance),
-						name = newInstance.Name,
-					}
-					table.insert(results, _arg0)
 				else
 					failureCount += 1
 					local _arg0 = {
 						success = false,
 						className = className,
 						parent = parentPath,
-						error = tostring(newInstance),
+						error = "Parent instance not found",
 					}
 					table.insert(results, _arg0)
 				end
 			else
 				failureCount += 1
-				local _arg0 = {
+				table.insert(results, {
 					success = false,
-					className = className,
-					parent = parentPath,
-					error = "Parent instance not found",
-				}
-				table.insert(results, _arg0)
+					error = "Class name and parent are required",
+				})
 			end
-		else
-			failureCount += 1
-			table.insert(results, {
-				success = false,
-				error = "Class name and parent are required",
-			})
 		end
+	end)
+	if not loopSuccess then
+		failureCount += 1
+		local _arg0 = {
+			success = false,
+			error = `Unexpected mass create failure: {tostring(loopError)}`,
+		}
+		table.insert(results, _arg0)
 	end
 	finishRecording(recordingId, successCount > 0)
 	return {
