@@ -861,7 +861,7 @@ export class RobloxStudioTools {
           px, py, pz,
           sx, sy, sz,
           rx, ry, rz,
-          paletteKey.trim()
+          paletteKey
         ];
 
         const rawShape = part[10];
@@ -904,7 +904,7 @@ export class RobloxStudioTools {
         position[0], position[1], position[2],
         size[0], size[1], size[2],
         rotation[0], rotation[1], rotation[2],
-        paletteKey.trim()
+        paletteKey
       ];
 
       const shape = record.shape;
