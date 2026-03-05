@@ -378,11 +378,15 @@ export class RobloxStudioMCPServer {
       process.exit(0);
     };
 
-    process.on('SIGTERM', shutdown);
-    process.on('SIGINT', shutdown);
-    process.on('SIGHUP', shutdown);
-
-    process.stdin.on('end', shutdown);
-    process.stdin.on('close', shutdown);
+    const detachedHttpMode = ['1', 'true', 'yes'].includes((process.env.ROBLOX_STUDIO_ALLOW_DETACHED || '').toLowerCase());
+    if (detachedHttpMode) {
+      console.error('Detached HTTP mode enabled; ignoring signal and stdin shutdown hooks');
+    } else {
+      process.on('SIGTERM', shutdown);
+      process.on('SIGINT', shutdown);
+      process.on('SIGHUP', shutdown);
+      process.stdin.on('end', shutdown);
+      process.stdin.on('close', shutdown);
+    }
   }
 }
